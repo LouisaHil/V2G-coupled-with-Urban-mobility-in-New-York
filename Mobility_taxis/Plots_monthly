@@ -1,0 +1,44 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+# Read the data from the CSV file
+data = pd.read_csv('TotalNbofEvs_January.csv')
+
+# Convert the 'time_interval' column to datetime
+data['time_interval'] = pd.to_datetime(data['time_interval'])
+
+# Filter data for a specific month, e.g., March (03)
+data = data[data['time_interval'].dt.month == 1]
+
+# Set the week number for each day in the month
+data['week'] = data['time_interval'].dt.isocalendar().week
+
+# Find the number of weeks in the filtered data
+num_weeks = data['week'].nunique()
+
+# Plot the data for each week separately
+fig, axes = plt.subplots(num_weeks, 1, figsize=(15, 6 * num_weeks), sharey=True)
+
+for i, (week, week_data) in enumerate(data.groupby('week')):
+    ax = axes[i]
+    ax.plot(week_data['time_interval'].dt.strftime('%d %H:%M'), week_data['total'])
+
+    # Set the x-axis label
+    ax.set_xlabel('Time of Day')
+
+    # Set the y-axis label
+    ax.set_ylabel('Number of EVs Available')
+
+    # Set the title
+    ax.set_title(f'EV Availability - Week {week}')
+
+    # Configure the x-axis format
+    ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+
+# Adjust the layout
+plt.tight_layout()
+
+# Show the plot
+plt.show()
