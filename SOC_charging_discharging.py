@@ -11,6 +11,7 @@ battery_capacity= 70 #kWh
 charging_rate=50 #kW
 charging_efficiency=0.9
 Energy_consumption_miles= 34/100   #An average Tesla electric car uses around 34 kWh of electricity per 100 miles.
+Efficiency = 1/Energy_consumption_miles
 Smin=0.35
 
 
