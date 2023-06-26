@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 
 
 # Load the data
-df_cars = pd.read_csv('Private_NbofEvs_1.csv', index_col='time_interval')
+#df_cars = pd.read_csv('Private_NbofEvs_1.csv', index_col='time_interval')
+df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
 df_cars.index = pd.to_datetime(df_cars.index)
 df_cars = df_cars.sort_values(by='time_interval')
 
@@ -44,7 +45,7 @@ def SOC_min(df):
 SOC_min_recompute=False
 if SOC_min_recompute==True:
     df_soc_min=SOC_min(df_cars)
-    df_soc_min.to_csv('SOCmin_data.csv')
+    df_soc_min.to_csv('SOCmin_data2.csv')
 
 
 
@@ -96,8 +97,8 @@ NYC_demand=NYdemand_days(num_days,NYC_demand)
 df15=interpolation15(NYC_demand,power_output)
 df15.index = df15.index + pd.DateOffset(years=2019 - df15.index.year.min())
 # Filter out only the data for the month of January
-january_data = df15[df15.index.month == 1]
+january_data = df15[df15.index.month == 2]
 print(january_data)
 
-df_soc_min = pd.read_csv('SOCmin_data.csv', index_col='time_interval')
+df_soc_min = pd.read_csv('SOCmin_data2.csv', index_col='time_interval')
 print(df_soc_min)
