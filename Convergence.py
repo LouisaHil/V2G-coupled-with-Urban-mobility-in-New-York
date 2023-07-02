@@ -28,24 +28,24 @@ df_NY = pd.read_csv('Actual_Load_NY.csv', parse_dates=['RTD End Time Stamp'], de
 
 ## datset car availability
 df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
+
 #df_cars = pd.read_csv('Private_NbofEvs_1.csv', index_col='time_interval',parse_dates=True)
 
 df15 = pd.read_csv('Wind_NY_Power', index_col=0, parse_dates=True)
 #df_15 = df15[df15.index.month == month]
 
-df_SOC_min = pd.read_csv('SOCmin_data2.csv'  , index_col='time_interval',parse_dates=True)
-df_SOC_min = df_SOC_min.drop('total',axis=1)
+#df_SOC_min = pd.read_csv('SOCmin_data2.csv'  , index_col='time_interval',parse_dates=True)
+#df_SOC_min = df_SOC_min.drop('total',axis=1)
+
+df_SOC_min = pd.read_csv('2_scaleSOCmin_data.csv', index_col='time_interval',parse_dates=True)
 #df_SOC_min = df_SOC_min[df_SOC_min.index.month == month]
-
-
-
 
 
 def load_and_extract_month(df_cars,month):
     df_cars.index = pd.to_datetime(df_cars.index)
     df_cars = df_cars.sort_values(by='time_interval')
-    df_cars = df_cars.drop('total',axis=1)
     df_cars = df_cars[df_cars.index.month == month]
+    df_cars = df_cars.drop('total', axis=1)
     return df_cars
 
 #if load_extract_month:
@@ -137,16 +137,6 @@ if recompute_dfNY_WIND:
     dfNY_WIND(df_wind,df_NY)
 
 
-# Initialize randomly the SOC for each car
-#df_SOC = pd.DataFrame(
-#    np.random.choice(np.linspace(0.1, 1, 10), size=df_cars.shape),
-#    index=df_cars.index,
-#    columns=df_cars.columns
-#)
-#df_Power = pd.DataFrame(0, index=df_cars.index, columns=df_cars.columns)
-#df_CarCounts = pd.DataFrame(0, index=df_cars.index, columns=['Charging', 'Discharging', 'Critical','Driving','Parked','noscale_discharging','noscale_charging','noscale_critical'])
-#df_SOC_shifted = df_SOC.shift()
-#df_SOC_min_shifted = df_SOC_min.shift()
 
 
 def critical_SOC_power_calculator(t,scaling_factor, critical, rate, battery_capacity, df_SOC, df_SOC_shifted, df_Power,df_CarCounts):
@@ -348,11 +338,12 @@ def fcompute_convergence(min_scaling_factor,month,df15,df_SOC_min,df_cars):
 
 
 # dictionary mapping each month to its minimum scaling factor
+# the min_scaling factors are constraints given by the Enegrgy deficiancy/surplus
 min_scaling_factors = {
-    1:255,
-    2:270,
-    3:220,
-    4:220,
+    1:260,
+    2:245,
+    3:245,
+    4:200,
     5:320,
     6:320,
     7:360,
@@ -368,15 +359,12 @@ min_scaling_factors = {
 #if compute_convergence:
 #    fcompute_convergence(min_scaling_factor,month)
 if compute_convergence:
-    for month in range(1,6):
+    for month in range(1,13):
         print(month)
         # Get the minimum scaling factor for this month
         min_scaling_factor = min_scaling_factors[month]
         print(min_scaling_factor)
         fcompute_convergence(min_scaling_factor,month,df15,df_SOC_min,df_cars)
-
-
-
 
 ## plot convergence
 
