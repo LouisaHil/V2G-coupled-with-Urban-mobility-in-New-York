@@ -7,7 +7,7 @@ from scipy.optimize import curve_fit
 from scipy.interpolate import UnivariateSpline
 from scipy.interpolate import interp1d
 
-recompute_dfNY_WIND=False
+recompute_dfNY_WIND=True
 
 compute_convergence=True
 plot_true=False
@@ -22,7 +22,8 @@ energy_loss_driving = 0.75    # energy loss per 15 minutes of driving
 sample_size=2694
 
 #raw wind for 9000MW and NY demand
-df_wind = pd.read_csv('USWINDDATA_process2.csv',parse_dates=['Local_time_New_York'], delimiter=';')
+df_wind1 = pd.read_csv('USWINDDATA_process2.csv',parse_dates=['Local_time_New_York'], delimiter=';')
+df_wind2 = pd.read_csv('USWINDDATA_process_4M.csv',parse_dates=['Local_time_New_York'], delimiter=';')
 df_NY = pd.read_csv('Actual_Load_NY.csv', parse_dates=['RTD End Time Stamp'], delimiter=';')
 
 
@@ -34,10 +35,10 @@ df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
 df15 = pd.read_csv('Wind_NY_Power', index_col=0, parse_dates=True)
 #df_15 = df15[df15.index.month == month]
 
-#df_SOC_min = pd.read_csv('SOCmin_data2.csv'  , index_col='time_interval',parse_dates=True)
-#df_SOC_min = df_SOC_min.drop('total',axis=1)
+df_SOC_min = pd.read_csv('SOCmin_data2.csv'  , index_col='time_interval',parse_dates=True)
+df_SOC_min = df_SOC_min.drop('total',axis=1)
 
-df_SOC_min = pd.read_csv('2_scaleSOCmin_data.csv', index_col='time_interval',parse_dates=True)
+#df_SOC_min = pd.read_csv('2_scaleSOCmin_data.csv', index_col='time_interval',parse_dates=True)
 #df_SOC_min = df_SOC_min[df_SOC_min.index.month == month]
 
 
@@ -143,7 +144,7 @@ def critical_SOC_power_calculator(t,scaling_factor, critical, rate, battery_capa
     df_SOC.loc[t, critical] = df_SOC_shifted.loc[t, critical] + rate/battery_capacity
     df_Power.loc[t, critical] = -(charging_rate * scaling_factor)/1000
     #df_CarCounts[t, 'noscale_critical']=critical.sum()
-    df_CarCounts.loc[t, 'noscale_critical'] = critical.sum()
+    df_CarCounts.loc[t, 'noscale'] = critical.sum()
 
 def charge(t, scaling_factor,parked, critical, Pdifference_left, rate, battery_capacity, df_SOC, df_SOC_shifted, df_Power,df_CarCounts):
     parked_not_critical = parked & ~critical
@@ -153,7 +154,7 @@ def charge(t, scaling_factor,parked, critical, Pdifference_left, rate, battery_c
     # Determine the number of cars for which we need to calculate the Power
     Nb = cumulative_Power[-cumulative_Power < abs(Pdifference_left)].count()
     #df_CarCounts[t, 'noscale_charging']=Nb
-    df_CarCounts.loc[t, 'noscale_charging'] = Nb
+    df_CarCounts.loc[t, 'noscale'] = Nb
     # Update SOC and Power for the cars that will be charging
     df_SOC.loc[t, new_Power.index[:Nb]] = np.minimum(1, df_SOC_shifted.loc[t, new_Power.index[:Nb]] + rate / battery_capacity)
     df_Power.loc[t, new_Power.index[:Nb]] = new_Power.loc[new_Power.index[:Nb]]
@@ -178,7 +179,7 @@ def discharge(t, scaling_factor,condition, parked, critical, Pdifference_left, r
     # Determine the number of cars for which we need to calculate the Power
     Nb = cumulative_Power[cumulative_Power <= abs(Pdifference_left)].count() + 1
     #df_CarCounts[t, 'noscale_discharging']=Nb
-    df_CarCounts.loc[t, 'noscale_discharging'] = Nb
+    df_CarCounts.loc[t, 'noscale'] = Nb
     # Update SOC and Power for the cars that will be discharging
     df_SOC.loc[t, new_Power.index[:Nb]] = df_SOC_shifted.loc[t, new_Power.index[:Nb]] - rate / battery_capacity
     df_Power.loc[t, new_Power.index[:Nb]] = new_Power.loc[new_Power.index[:Nb]]
@@ -223,7 +224,7 @@ def discharge_update_car_counts(t,scaling_factor,condition, parked, critical, dr
     df_CarCounts.loc[t, 'Total_needed'] = (df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] +
                                            df_CarCounts.loc[t, 'Critical']) / (
                                                       1 - df_CarCounts.loc[t, 'Driving'] / sample_size -
-                                                      df_CarCounts.loc[t, 'Notavailbutparked'] / sample_size)
+                                                      (df_CarCounts.loc[t, 'Notavailbutparked']) / sample_size)
 
 
 def smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars):
@@ -242,8 +243,7 @@ def smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars):
 
     df_Power = pd.DataFrame(0, index=df_cars.index, columns=df_cars.columns)
     df_CarCounts = pd.DataFrame(0, index=df_cars.index,
-                                columns=['Charging', 'Discharging', 'Critical', 'Driving', 'Parked',
-                                         'noscale_discharging', 'noscale_charging', 'noscale_critical'])
+                                columns=['Charging', 'Discharging', 'Critical', 'Driving'])
     df_SOC_shifted = df_SOC.shift()
     #################################
     # Iterate over each time step
@@ -282,76 +282,83 @@ def smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars):
 
             discharge_update_car_counts(t,scaling_factor,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size)
     #convergence = convergence.append(pd.Series([scaling_factor,df_CarCounts['Total_needed'].max()]), ignore_index=True)
-    #df_Power_sum = df_Power.sum(axis=1).to_frame().rename(columns={0: 'Sum'})
-    #joined_df = df15.join(df_Power_sum)
-    #joined_df=joined_df.join(df_CarCounts)
+    df_Power_sum = df_Power.sum(axis=1).to_frame().rename(columns={0: 'PV2G'})
 
-    result=math.ceil(df_CarCounts['Total_needed'].max())
-    median=math.ceil(df_CarCounts['Total_needed'].median())
+    df_Power_sum = df15.join(df_Power_sum)
+    #joined_df=joined_df.join(df_CarCounts)
+    b=df_CarCounts
+    result=df_CarCounts['Total_needed'].max()
+    #median=df_CarCounts['Total_needed'].median()
     margin=df_CarCounts['margin'].min()
     # Find the index at which 'total' is maximized
     max_total_index = df_CarCounts['Total_needed'].idxmax()
-    # Use this index to get the corresponding value in the 'charging' columnreturn result,median,margin, df_Nb_cars_noscale
-    Nb = df_CarCounts.loc[max_total_index, 'noscale_discharging'] +  df_CarCounts.loc[max_total_index, 'noscale_charging']+ df_CarCounts.loc[max_total_index, 'noscale_critical']
+    PV2G = df_Power_sum.loc[max_total_index, 'PV2G']
+    Pdiff=df_Power_sum.loc[max_total_index,'Pdifference']
+    # Use this index to get the corresponding value in the 'charging' column return result,median,margin, df_Nb_cars_noscale
+    df_CarCounts['P_balance']=df_Power_sum['PV2G'] + df15['Pdifference']
+    rmse = np.sqrt((df_CarCounts['P_balance']**2).mean())
+    Nb = df_CarCounts.loc[max_total_index, 'noscale']
 
-    p1=round(df_CarCounts.loc[max_total_index, 'Driving']/sample_size,3)
-    p2=round(df_CarCounts.loc[max_total_index, 'Notavailbutparked']/sample_size,3)
-    Nb4=math.ceil(Nb/(1-p1-p2))
-    Nb2= math.ceil(df_CarCounts.loc[max_total_index, 'Driving']/sample_size*Nb4)
-    Nb3=math.ceil(df_CarCounts.loc[max_total_index, 'Notavailbutparked']/sample_size*Nb4)
-    return result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2
+    p1=df_CarCounts.loc[max_total_index, 'Driving']/sample_size
+    p2=df_CarCounts.loc[max_total_index, 'Notavailbutparked']/sample_size
+    Nb4=Nb/(1-p1-p2)
+    Nb2= df_CarCounts.loc[max_total_index, 'Driving']/sample_size*Nb4
+    Nb3=df_CarCounts.loc[max_total_index, 'Notavailbutparked']/sample_size*Nb4
+    return result,margin, Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff
 
 
     #print(convergence)
 
 def fcompute_convergence(min_scaling_factor,month,df15,df_SOC_min,df_cars):
     if compute_convergence:
-        convergence = pd.DataFrame(columns=['scaling_factor', 'Total_needed_max', 'Total_needed_median','Energy_coverage'])
+        convergence = pd.DataFrame(columns=['scaling_factor', 'Total_needed_max','Energy_coverage'])
         for scaling_factor in range(50000, min_scaling_factor+19700, -20000):
-            result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
+            result,margin,Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
             convergence = convergence.append(
-                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Total_needed_median': median,'Energy_coverage':margin,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
+                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Energy_coverage':margin,'PV2G':PV2G,'Pdiff':Pdiff, 'Pbalance_rmse':rmse,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
                 ignore_index=True)
+            a = convergence
         for scaling_factor in range(min_scaling_factor+19700, min_scaling_factor+1700, -2000):
-            result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
+            result,margin,Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
             convergence = convergence.append(
-                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Total_needed_median': median,'Energy_coverage':margin,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
+                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Energy_coverage':margin,'PV2G':PV2G,'Pdiff':Pdiff, 'Pbalance_rmse':rmse,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
                 ignore_index=True)
-
         for scaling_factor in range(min_scaling_factor+1700, min_scaling_factor+400, -250):
-            result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
+            result,margin,Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
             convergence = convergence.append(
-                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Total_needed_median': median,'Energy_coverage':margin,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
+                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Energy_coverage':margin,'PV2G':PV2G,'Pdiff':Pdiff, 'Pbalance_rmse':rmse,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
                 ignore_index=True)
         for scaling_factor in range(min_scaling_factor+400, min_scaling_factor+50, -50):
-            result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
+            result,margin,Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
             convergence = convergence.append(
-                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Total_needed_median': median,'Energy_coverage':margin,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
+                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Energy_coverage':margin,'PV2G':PV2G,'Pdiff':Pdiff, 'Pbalance_rmse':rmse,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
                 ignore_index=True)
         for scaling_factor in range(min_scaling_factor+50, min_scaling_factor-10, -5):
-            result, median, margin, Nb, Nb2, Nb3,Nb4, p1, p2  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
+            result,margin,Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff  = smart_charging(scaling_factor,month,df15,df_SOC_min,df_cars)
             convergence = convergence.append(
-                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Total_needed_median': median,'Energy_coverage':margin,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
+                {'scaling_factor': scaling_factor, 'Total_needed_max': result, 'Energy_coverage':margin,'PV2G':PV2G,'Pdiff':Pdiff, 'Pbalance_rmse':rmse,'Nb_indivual_cars':Nb, 'Nb_driving':Nb2,'Nb_parked':Nb3, 'prob_driving': p1, 'prob_parking':p2,'DatasetNbcars':Nb4},
                 ignore_index=True)
         filename = 'convergence{}.csv'.format(month)
+        a=convergence
         convergence.to_csv(filename, index=False)
 
 
+
 # dictionary mapping each month to its minimum scaling factor
-# the min_scaling factors are constraints given by the Enegrgy deficiancy/surplus
+# the min_scaling factors are constraints given by the Energy deficiancy/surplus
 min_scaling_factors = {
-    1:260,
+    1:240,
     2:245,
     3:245,
-    4:200,
-    5:320,
-    6:320,
+    4:215,
+    5:330,
+    6:325,
     7:360,
     8:380,
-    9:335,
-    10:330,
-    11:330,
-    12:280
+    9:310,
+    10:310,
+    11:230,
+    12:250
 }
 
 
