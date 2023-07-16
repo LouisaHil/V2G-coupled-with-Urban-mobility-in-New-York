@@ -6,9 +6,9 @@ import hashlib
 import datetime
 
 
-month=8
+month=11
 capacity=9
-scaledown=200
+scaledown=800
 df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
 df_SOC_min = pd.read_csv('SOCmin_data2.csv' , index_col='time_interval',parse_dates=True)
 #df15 = pd.read_csv(f'Wind_NY_Power{capacity}', index_col=0, parse_dates=True)
@@ -34,7 +34,7 @@ def load_and_extract_month(df_cars,month):
     return df_cars
 
 
-def get_SOC_list_t(df_SOC, relevant_columns_indices, t, scaling_factor):
+def get_SOC_list_t(df_SOC, relevant_columns_indices, t, scaling_factor,Pdifference):
     # Get the relevant columns from df_SOC
     df_relevant = df_SOC.loc[t, relevant_columns_indices]
 
@@ -51,9 +51,9 @@ def get_SOC_list_t(df_SOC, relevant_columns_indices, t, scaling_factor):
     # They need to be in available state and a better assumption is to stay that when they have high SOC they to discharge and when the have low SOC the want to discharge.
     # The SOC value at t+1 can then be initialized randomly as follows:
     # Generate random values (scaling_factor - 1) times
-    if Pdifference_left>0:
+    if Pdifference>0:
         random_SOC_values = np.random.uniform(0.2, 0.5, size=(len(SOC_values_to_replicate), scaling_factor - 1))
-    if Pdifference_left<0:
+    if Pdifference<0:
         random_SOC_values = np.random.uniform(0.6, 1, size=(len(SOC_values_to_replicate), scaling_factor - 1))
 
     # Concatenate the replicated values and the random values
@@ -166,6 +166,9 @@ def charge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
     # Sort the SOC by lowest to highest from the available ones excluding the critical cars
     SOC_sorted = df_SOC_.loc[t - pd.DateOffset(minutes=15), condition2 & ~critical & parked_prev].sort_values(
         ascending=True)
+    print('cars available for charge',len(SOC_sorted))
+    print('blocked charging',(~condition2 & ~critical & parked_prev).sum())
+
     # 3. The replication of alpha cars means that we will also have alpha times a car with similar mobility patterns ans SOC in available state.
     # 4. Decide if remaining cars need to be charged
     # check if we need to remain charging
@@ -182,8 +185,13 @@ def charge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
         needed= math.ceil(abs(Pdifference_left) * 1000 / (rate))-1
         # 2. alpha: Define how many cars need to be replicated
         if needed > len(SOC_sorted):
-            alpha = math.ceil(needed / len(SOC_sorted))
-            Nb = math.ceil(needed / alpha) - 1
+            if len(SOC_sorted)>0:
+                alpha = math.ceil(needed / len(SOC_sorted))-1
+                Nb = math.ceil(needed / alpha) - 1
+            else:
+                print('error need to create whole new dataset of alpha cars')
+                alpha=needed      ## we need to create all new cars 
+                Nb=1 # take a random index from original cars and crste a random SOC
         else:
             alpha = 1
             Nb=needed
@@ -203,9 +211,9 @@ def charge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
     return Pdifference_left,relevant_columns,alpha,Nb,PV2G_charge,free_nb
 
 def discharge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
-    print('discharging')
+
     SOC_sorted = df_SOC_.loc[t - pd.DateOffset(minutes=15), condition & ~critical & parked_prev].sort_values(ascending=False)
-    print('available discharging', len(SOC_sorted))
+
     needed = math.ceil(abs(Pdifference_left) * 1000 / (rate))
     if needed> len(SOC_sorted):
         alpha=math.ceil(needed/len(SOC_sorted))
@@ -281,125 +289,138 @@ master_column_mapping = {}
 # Initialize an empty dictionary to hold the master inverse column mapping
 master_inv_column_mapping = {}
 column_mapping = None
+start_time = df_cars_month.index[1]  # Set start_time as the second index value
+end_time = df_cars_month.index[-2]
 for t in df_cars_month.index[1:]:
     print(t)
-    # Check if the timestamp exists in SOC_dict
-    # If SOC_dict is not empty and t-1 exists in SOC_dict, convert the last entry to a dataframe
-    if SOC_dict and (t - pd.DateOffset(minutes=15)) in SOC_dict:
-        # Convert your datetime t-1 to a dataframe
-        df_SOC_ = pd.DataFrame(SOC_dict[t - pd.DateOffset(minutes=15)], index=[t - pd.DateOffset(minutes=15)])
-        new_row_time = t
-        # Create a new row with the same columns as df_SOC_
-        new_row = pd.Series(index=df_SOC_.columns)
-    else:
-        # If SOC_dict is empty or t-1 does not exist, use the initial df_SOC
-        df_SOC_ = df_SOC
-        new_row_time = t
-        new_row = pd.Series(index=df_SOC_.columns)
-        df_cars_month_joined=df_cars_month
-        df_SOC_min_month_joined=df_SOC_min_month
+    if t >= start_time and t < end_time:
+        # Check if the timestamp exists in SOC_dict
+        # If SOC_dict is not empty and t-1 exists in SOC_dict, convert the last entry to a dataframe
+        if SOC_dict and (t - pd.DateOffset(minutes=15)) in SOC_dict:
+            # Convert your datetime t-1 to a dataframe
+            df_SOC_ = pd.DataFrame(SOC_dict[t - pd.DateOffset(minutes=15)], index=[t - pd.DateOffset(minutes=15)])
+            new_row_time = t
+            # Create a new row with the same columns as df_SOC_
+            new_row = pd.Series(index=df_SOC_.columns, dtype='float64')
+        else:
+            # If SOC_dict is empty or t-1 does not exist, use the initial df_SOC
+            df_SOC_ = df_SOC
+            new_row_time = t
+            new_row = pd.Series(index=df_SOC_.columns, dtype='float64')
+            df_cars_month_joined=df_cars_month
+            df_SOC_min_month_joined=df_SOC_min_month
+        print("Number of cars in set:", df_SOC_.shape[1])
+        ### create mask for which the different states of a car can be taken
+        parked_prev = df_cars_month_joined.shift().loc[t] == 1
+        driving_prev = ~parked_prev
+        print('number of driving cars',driving_prev.sum())
+        print('number of parked cars',parked_prev.sum())
+        #critical cars
+        critical = ((df_SOC_.loc[t -pd.DateOffset(minutes=15), parked_prev] - (discharging_rate * delta_t) / battery_capacity) <=df_SOC_min_month_joined.loc[t,parked_prev]) & (df_cars_month_joined.loc[t, parked_prev] == 0)
+        critical_parked_indices = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical& parked_prev].index
+        # blocked cars for either charging or discharging
+        condition2 = df_SOC_.loc[t - pd.DateOffset(minutes=15), parked_prev & ~critical] <= 1 - (charging_rate * delta_t) / battery_capacity
+        condition = df_SOC_.loc[t - pd.DateOffset(minutes=15), parked_prev & ~critical] > (discharging_rate * delta_t) / battery_capacity
+        ### update the SOC of all driving cars at time step t+1
+        new_row[driving_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), driving_prev] - energy_loss_driving / battery_capacity
+        new_row[critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical & parked_prev] + (charging_rate * delta_t) / battery_capacity
+        # check for periods of high wind or low wind.
+        Pdifference = df_15.shift().loc[t, 'Pdifference']
+        print('P ', Pdifference)
+        Pagg_critical = (critical & parked_prev).sum() * (-charging_rate) / 1000
+        Pdifference_left= Pdifference+Pagg_critical
+        print('P and critical', Pdifference_left)
+        if Pdifference_left > 0:
+            # compute SOC of blocked cars (cannot be charged) SOC(t+1)=SOC(t)
+            new_row[~condition2 & ~critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), ~condition2 & ~critical & parked_prev]
+            # charge cars.
+            Pdifference_left_new,relevant_columns,alpha,Nb,PV2G,free_nb=charge(df_SOC_,Pdifference_left,charging_rate,delta_t,battery_capacity)
+            #relevant_columns_indices = np.concatenate((relevant_columns, critical_parked_indices))
+            relevant_columns_indices = relevant_columns
+        
+        if Pdifference_left < 0:
+            new_row[~condition & ~critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), ~condition & ~critical& parked_prev]
+            relevant_columns,alpha,Nb,PV2G,free_nb=discharge(df_SOC_,Pdifference_left,discharging_rate,delta_t,battery_capacity)
+            #relevant_columns_indices = np.concatenate((relevant_columns, critical_parked_indices))
+            relevant_columns_indices = relevant_columns
+        
+        
+        relevant_columns_indices_set = set(relevant_columns_indices)
+        
+        # these are all the ones that or either driving, or  blocked by condition 1 or 2 or  free --> not participating because power balance is fulfilled
+        non_relevant_columns_indices = [idx for idx in df_SOC_.columns if idx not in relevant_columns_indices_set]
+        
+        if alpha>1: ## adding new cars with similar mobility patterns and SOC in good range
+            df_SOC_.loc[new_row_time] = new_row
+            # we need this because we need to also store the SOC of the not relevant column indices ( those that are not scaled)
+        
+            # Generate the SOC list for the next  time step ###these are only the ones i know exist mutliple times because of scaling.
+            SOC_list_t = get_SOC_list_t(df_SOC_, relevant_columns_indices, t , alpha,Pdifference)
+        
+            # create a dictionary with the soc of all the non relavent cars ( driving, blocked, free)
+            SOC_t_not_relevant = df_SOC_.loc[t, non_relevant_columns_indices].to_dict()
+        
+            df_cars_month_ext_non_relevant = df_cars_month_joined.loc[[t], non_relevant_columns_indices]
+            df_SOC_min_month_ext_non_relevant = df_SOC_min_month_joined.loc[[t], non_relevant_columns_indices]
+        
+            # we need this for the sake of taking into account upcoming drives, meaning we need the correct SOCmin.
+            # if it weren't for SOC min and just recreating mobility pattens we could just compute the probability of driving/parking at time t
+            df_cars_month_not_rel, df_SOC_min_month_not_rel = get_related_dataframes_non_relevant(df_cars_month_ext_non_relevant,df_SOC_min_month_ext_non_relevant,df_cars_month, df_SOC_min_month, t, non_relevant_columns_indices)
+        
+            df_cars_month_ext,column_mapping = get_replicate_df(df_cars_month_joined, relevant_columns_indices, alpha,j,t,column_mapping)
+            df_SOC_min_month_ext,column_mapping = get_replicate_df(df_SOC_min_month_joined, relevant_columns_indices, alpha,j,t,column_mapping)
+        
+            # Update the index of SOC_list_t with the new index list to get the corresponding index of the replicated cars.
+            new_index = [column_mapping[col_name][i % (alpha)] for i, col_name in enumerate(SOC_list_t.index)]
+            SOC_list_t.index = new_index
+            SOC_dict_t = SOC_list_t.to_dict()
+        
+            # Update master column mapping to keep track of correct indices
+            master_column_mapping.update(column_mapping)
+        
+            df_cars_month_rel, df_SOC_min_month_rel = get_related_dataframes_relevant(df_cars_month, df_SOC_min_month,df_cars_month_ext, df_SOC_min_month_ext, t,column_mapping)
+        
+            df_SOC_min_month_joined=df_SOC_min_month_not_rel.join(df_SOC_min_month_rel)
+            df_cars_month_joined=df_cars_month_not_rel.join(df_cars_month_rel)
+        
+            SOC_dict[t] = {**SOC_t_not_relevant,**SOC_dict_t} # this dictionary now has all the car ids and SOC status of all cars at t+1.
+            column_mapping = None
+        
+        else: ### we don't need replication in as we have enough cars but we do need to get df_cars_month and dfSOC_joined at time t+1
+            df_SOC_.loc[new_row_time] = new_row
+            SOC_t = df_SOC_.loc[new_row_time].to_dict()
+            SOC_dict[t] = {**SOC_t} # this dictionary now has all the car ids and SOC status of all cars at t+1.
+        
+            df_cars_month_joined, df_SOC_min_month_joined = get_related_dataframes(df_cars_month_joined, df_SOC_min_month_joined,df_cars_month,df_SOC_min_month, t)
+            column_mapping = None
+        if Pdifference_left>=0:
+            TotalParticipationneeded= (~condition2 & ~critical & parked_prev).sum() +  (critical).sum()+ (driving_prev).sum()+alpha*Nb
+        if  Pdifference_left<=0:
+            TotalParticipationneeded= (~condition & ~critical & parked_prev).sum() +  (critical).sum()+ (driving_prev).sum()+alpha*Nb
 
-    ### create mask for which the different states of a car can be taken
-    parked_prev = df_cars_month_joined.shift().loc[t] == 1
-    driving_prev = ~parked_prev
-    #critical cars
-    critical = ((df_SOC_.loc[t -pd.DateOffset(minutes=15), parked_prev] - (discharging_rate * delta_t) / battery_capacity) <=df_SOC_min_month_joined.loc[t,parked_prev]) & (df_cars_month_joined.loc[t, parked_prev] == 0)
-    critical_parked_indices = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical& parked_prev].index
-    # blocked cars for either charging or discharging
-    condition2 = df_SOC_.loc[t - pd.DateOffset(minutes=15), parked_prev & ~critical] <= 1 - (charging_rate * delta_t) / battery_capacity
-    condition = df_SOC_.loc[t - pd.DateOffset(minutes=15), parked_prev & ~critical] > (discharging_rate * delta_t) / battery_capacity
-    ### update the SOC of all driving cars at time step t+1
-    new_row[driving_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), driving_prev] - energy_loss_driving / battery_capacity
-    new_row[critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical & parked_prev] + (charging_rate * delta_t) / battery_capacity
-    # check for periods of high wind or low wind.
-    Pdifference = df_15.shift().loc[t, 'Pdifference']
-    Pagg_critical = (critical & parked_prev).sum() * (-charging_rate) / 1000
-    Pdifference_left= Pdifference+Pagg_critical
-    print(Pdifference_left)
-    if Pdifference_left > 0:
-        # compute SOC of blocked cars (cannot be charged) SOC(t+1)=SOC(t)
-        new_row[~condition2 & ~critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), ~condition2 & ~critical & parked_prev]
-        # charge cars.
-        Pdifference_left_new,relevant_columns,alpha,Nb,PV2G,free_nb=charge(df_SOC_,Pdifference_left,charging_rate,delta_t,battery_capacity)
-        #relevant_columns_indices = np.concatenate((relevant_columns, critical_parked_indices))
-        relevant_columns_indices = relevant_columns
+        data_dict = {
+            'index t': t-pd.DateOffset(minutes=15),  # Now t is defined as your loop variable
+            'Size': df_SOC_.shape[1],
+            'parked ': parked_prev.sum(),
+            'alpha ': alpha,  # Now alpha should be defined inside your loop
+            'Blocked discharging ': (~condition & ~critical & parked_prev).sum(),
+            'Blocked charging ': (~condition2 & ~critical & parked_prev).sum(),
+            'critical ': (critical).sum(),
+            'driving ': (driving_prev).sum(),
+            'Nb': Nb,
+            'free cars':free_nb,
+            'TotalParticipation needed': TotalParticipationneeded,
+            'P_difference': Pdifference,
+            'P_difference_left': Pdifference_left,  # Now P_difference_left should be defined inside your loop
+            'PV2G': PV2G,  # Now PV2G should be defined inside your loop
+        
+        }
+        # Append the data dictionary to the list
+        data_dicts.append(data_dict)
 
-    if Pdifference_left < 0:
-        new_row[~condition & ~critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), ~condition & ~critical& parked_prev]
-        relevant_columns,alpha,Nb,PV2G,free_nb=discharge(df_SOC_,Pdifference_left,discharging_rate,delta_t,battery_capacity)
-        #relevant_columns_indices = np.concatenate((relevant_columns, critical_parked_indices))
-        relevant_columns_indices = relevant_columns
-
-
-    relevant_columns_indices_set = set(relevant_columns_indices)
-
-    # these are all the ones that or either driving, or  blocked by condition 1 or 2 or  free --> not participating because power balance is fulfilled
-    non_relevant_columns_indices = [idx for idx in df_SOC_.columns if idx not in relevant_columns_indices_set]
-
-    if alpha>1: ## adding new cars with similar mobility patterns and SOC in good range
-        df_SOC_.loc[new_row_time] = new_row
-        # we need this because we need to also store the SOC of the not relevant column indices ( those that are not scaled)
-
-        # Generate the SOC list for the next  time step ###these are only the ones i know exist mutliple times because of scaling.
-        SOC_list_t = get_SOC_list_t(df_SOC_, relevant_columns_indices, t , alpha)
-
-        # create a dictionary with the soc of all the non relavent cars ( driving, blocked, free)
-        SOC_t_not_relevant = df_SOC_.loc[t, non_relevant_columns_indices].to_dict()
-
-        df_cars_month_ext_non_relevant = df_cars_month_joined.loc[[t], non_relevant_columns_indices]
-        df_SOC_min_month_ext_non_relevant = df_SOC_min_month_joined.loc[[t], non_relevant_columns_indices]
-
-        # we need this for the sake of taking into account upcoming drives, meaning we need the correct SOCmin.
-        # if it weren't for SOC min and just recreating mobility pattens we could just compute the probability of driving/parking at time t
-        df_cars_month_not_rel, df_SOC_min_month_not_rel = get_related_dataframes_non_relevant(df_cars_month_ext_non_relevant,df_SOC_min_month_ext_non_relevant,df_cars_month, df_SOC_min_month, t, non_relevant_columns_indices)
-
-        df_cars_month_ext,column_mapping = get_replicate_df(df_cars_month_joined, relevant_columns_indices, alpha,j,t,column_mapping)
-        df_SOC_min_month_ext,column_mapping = get_replicate_df(df_SOC_min_month_joined, relevant_columns_indices, alpha,j,t,column_mapping)
-
-        # Update the index of SOC_list_t with the new index list to get the corresponding index of the replicated cars.
-        new_index = [column_mapping[col_name][i % (alpha)] for i, col_name in enumerate(SOC_list_t.index)]
-        SOC_list_t.index = new_index
-        SOC_dict_t = SOC_list_t.to_dict()
-
-        # Update master column mapping to keep track of correct indices
-        master_column_mapping.update(column_mapping)
-
-        df_cars_month_rel, df_SOC_min_month_rel = get_related_dataframes_relevant(df_cars_month, df_SOC_min_month,df_cars_month_ext, df_SOC_min_month_ext, t,column_mapping)
-
-        df_SOC_min_month_joined=df_SOC_min_month_not_rel.join(df_SOC_min_month_rel)
-        df_cars_month_joined=df_cars_month_not_rel.join(df_cars_month_rel)
-
-        SOC_dict[t] = {**SOC_t_not_relevant,**SOC_dict_t} # this dictionary now has all the car ids and SOC status of all cars at t+1.
-        column_mapping = None
-
-    else: ### we don't need replication in as we have enough cars but we do need to get df_cars_month and dfSOC_joined at time t+1
-        df_SOC_.loc[new_row_time] = new_row
-        SOC_t = df_SOC_.loc[new_row_time].to_dict()
-        SOC_dict[t] = {**SOC_t} # this dictionary now has all the car ids and SOC status of all cars at t+1.
-
-        df_cars_month_joined, df_SOC_min_month_joined = get_related_dataframes(df_cars_month_joined, df_SOC_min_month_joined,df_cars_month,df_SOC_min_month, t)
-        column_mapping = None
-
-
-    data_dict = {
-        'index t': t-pd.DateOffset(minutes=15),  # Now t is defined as your loop variable
-        'Size': df_SOC_.shape[1],
-        'parked ': parked_prev.sum(),
-        'alpha ': alpha,  # Now alpha should be defined inside your loop
-        'Blocked discharging ': (~condition & ~critical & parked_prev).sum(),
-        'Blocked charging ': (~condition2 & ~critical & parked_prev).sum(),
-        'critical ': (critical).sum(),
-        'driving ': (driving_prev).sum(),
-        'Nb': Nb,
-        'free cars':free_nb,
-        'TotalParticipation needed':df_cars_month_joined.shape[1]-free_nb,
-        'P_difference_left': Pdifference_left,  # Now P_difference_left should be defined inside your loop
-        'PV2G': PV2G,  # Now PV2G should be defined inside your loop
-
-    }
-    # Append the data dictionary to the list
-    data_dicts.append(data_dict)
-    #print(data_dicts)
+    if t > end_time:
+        break
+        #print(data_dicts)
 
 # Convert the list of dictionaries to a pandas DataFrame
 df_to_export = pd.DataFrame(data_dicts)
