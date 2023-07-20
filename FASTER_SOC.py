@@ -3,13 +3,37 @@ import numpy as np
 import math
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-
+from Scaling_mobility import scaledata, SOC_min_vect
 recompute_dfNY_WIND= False
 smart_charging_=False
 TotalAllmonths_smart_charging=True
 plotWindvsNY=False
 plot_result=False
 plotdiff=False
+import logging
+logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S")
+scaling=10
+dfmobility= pd.read_csv('expanded_dataset.csv', index_col='time_interval')
+energy_loss_driving = 0.75
+#### scaled data :
+recomputescaled=False
+if recomputescaled==True :
+    df_cars=scaledata(dfmobility)
+    df_cars.to_csv(f'{scaling}SyntheticData.csv')
+    logging.info('done creating dataset')
+if recomputescaled==False:
+    df_cars=pd.read_csv(f'{scaling}SyntheticData.csv', index_col='time_interval')
+
+# Apply the function to each column of the DataFrame
+SOC_min_recompute=False
+if SOC_min_recompute==True:
+    df_soc_min = df_cars.apply(SOC_min_vect)
+    df_soc_min.to_csv(f'{scaling}_scaleSOCmin_data.csv')
+    logging.info('done creating SOC MIN  dataset')
+
+if SOC_min_recompute==False:
+    df_SOC_min=pd.read_csv(f'{scaling}_scaleSOCmin_data.csv', index_col='time_interval', parse_dates=True)
+
 
 
 battery_capacity = 70  # kWh
@@ -18,10 +42,10 @@ energy_loss_driving = 0.75    # energy loss per 15 minutes of driving
 energy_loss_driving_winter=1
 scenarios = [
     {"name": "scenario2_1", "capacity": 9, "charging_rate": 50, "discharging_rate": 20},
-    {"name": "scenario1_1", "capacity": 13, "charging_rate": 30, "discharging_rate": 40},
-    {"name": "scenario1_2", "capacity": 9, "charging_rate": 22, "discharging_rate": 11},
-    {"name": "scenario1_3", "capacity": 9, "charging_rate": 50, "discharging_rate": 50},
-    {"name": "scenario2_1", "capacity": 13, "charging_rate": 50, "discharging_rate": 50},
+    {"name": "scenario1_1", "capacity": 13, "charging_rate": 50, "discharging_rate": 20},
+    #{"name": "scenario1_2", "capacity": 9, "charging_rate": 50, "discharging_rate": 20},
+    #{"name": "scenario1_3", "capacity": 9, "charging_rate": 50, "discharging_rate": 50},
+    #{"name": "scenario2_1", "capacity": 13, "charging_rate": 50, "discharging_rate": 50},
     #{"name": "scenario2_2", "capacity": 2.5, "charging_rate": 19, "discharging_rate": 10},
     #{"name": "scenario3_1", "capacity": 4, "charging_rate": 50, "discharging_rate": 22},
     #{"name": "scenario3_2", "capacity": 2.5, "charging_rate": 50, "discharging_rate": 22}
@@ -29,13 +53,13 @@ scenarios = [
 monthplot=8
 month=8
 
-sample_syn=5
+sample_syn=scaling
 sample_size=sample_syn*2694
 
 
 # original
-df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
-df_cars = pd.read_csv('5SyntheticData.csv', index_col='time_interval')
+#df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
+#df_cars = pd.read_csv('5SyntheticData.csv', index_col='time_interval')
 
 df_cars.index = pd.to_datetime(df_cars.index)
 df_cars = df_cars.sort_values(by='time_interval')
@@ -47,17 +71,18 @@ for scenario in scenarios:
     capacity = scenario['capacity']
     charging_rate = scenario['charging_rate']
     discharging_rate = scenario['discharging_rate']
-    df = pd.read_csv(f'USWINDDATA_process_{capacity}M.csv', parse_dates=['Local_time_New_York'], delimiter=';')
+    #df = pd.read_csv(f'USWINDDATA_process_{capacity}M.csv', parse_dates=['Local_time_New_York'], delimiter=';')
+
     #df = pd.read_csv('USWINDDATA_process2.csv',parse_dates=['Local_time_New_York'], delimiter=';')
     #df_cars = pd.read_csv('Private_NbofEvs_1.csv', index_col='time_interval',parse_dates=True)
     #df_cars = df_cars.drop('total',axis=1)
 
-    df_NY = pd.read_csv('Actual_Load_NY.csv', parse_dates=['RTD End Time Stamp'], delimiter=';')
+    #df_NY = pd.read_csv('Actual_Load_NY.csv', parse_dates=['RTD End Time Stamp'], delimiter=';')
 
     #original data
     #df_SOC_min = pd.read_csv('SOCmin_data2.csv'  , index_col='time_interval',parse_dates=True)
     #df_SOC_min = pd.read_csv('2_scaleSOCmin_data.csv', index_col='time_interval', parse_dates=True)
-    df_SOC_min = pd.read_csv('5SyntheticData.csv', index_col='time_interval', parse_dates=True)
+    #df_SOC_min = pd.read_csv('5SyntheticData.csv', index_col='time_interval', parse_dates=True)
     #df_SOC_min = df_SOC_min.drop('total',axis=1)
 
     # for synthetic data you need to uncomment this
@@ -117,13 +142,13 @@ for scenario in scenarios:
         df_NY=preprocess_NY(df_NY)
         df15['NYC_demand'] = df_NY['RTD Actual Load'].values
         df15['Pdifference'] = df15['power_output']-df15['NYC_demand']
-        df15.to_csv(f'Wind_NY_Power{capacity}')
+        df15.to_csv(f'Wind_NY_Power{capacity}.csv')
 
-    if recompute_dfNY_WIND:
-        dfNY_WIND(df,df_NY,capacity)
-        df15 = pd.read_csv(f'Wind_NY_Power{capacity}', index_col=0, parse_dates=True)
+    #if recompute_dfNY_WIND:
+        #dfNY_WIND(df,df_NY,capacity)
+        #df15 = pd.read_csv(f'Wind_NY_Power{capacity}.csv', index_col=0, parse_dates=True)
     if ~recompute_dfNY_WIND:
-        df15 = pd.read_csv(f'Wind_NY_Power{capacity}', index_col=0, parse_dates=True)
+        df15 = pd.read_csv(f'Wind_NY_Power{capacity}.csv', index_col=0, parse_dates=True)
 
 
     def load_and_extract_month(df,month):
@@ -245,39 +270,50 @@ for scenario in scenarios:
     #df_SOC_min = pd.read_csv('20BIGSOCmin_data.csv', index_col='time_interval',parse_dates=True)
     ##month
     #df_SOC_min = pd.read_csv('SOCmin_data.csv', index_col='time_interval',parse_dates=True)
+    def results(f_CarCounts,df_results):
+        df_results['Nmissing_total']=scaling_factor*df_CarCounts['Missing_noscale'] /(1-df_CarCounts['P_Blocked_high']-df_CarCounts['P_Blocked_low'])
+        df_results['Ncharging_total']=scaling_factor*df_CarCounts['Charging_noscale']
+        df_results['Ndischarging_total']=scaling_factor*df_CarCounts['Discharging_noscale']
+        df_results['Ncritical']=scaling_factor*df_CarCounts['Critical_noscale']
+        df_results['Total']=(df_results['Nmissing_total']+  df_results['Ncharging_total'] +df_results['Ndischarging_total']+df_results['Ncritical'])/(1-df_CarCounts['P_Blocked_high']-df_CarCounts['P_Blocked_low']-df_CarCounts['P_driving'])
+
+        df_results['Ndriving']=df_CarCounts['P_driving']* df_results['Total']
+        df_results['Nblocked']=(df_CarCounts['P_Blocked_high']+df_CarCounts['P_Blocked_low'])* df_results['Total']
+        df_results.to_csv(f'/Users/louisahillegaart/pythonProject1/RESULTS/{scenario["name"]}/RESULTS_month{month}_W{capacity}_alpha_{scaling_factor}_SOC_discharging_{discharging_rate}.csv')
 
 
-    def critical_discharge(t,parked_prev, condition, discharging_rate, battery_capacity, df_SOC,df_Power):
-        df_SOC.loc[t, ~condition & parked_prev] = df_SOC.shift().loc[t, ~condition & parked_prev] - (
-                discharging_rate * delta_t) / battery_capacity
-        df_Power.loc[t, ~condition & parked_prev] = (discharging_rate * scaling_factor) / 1000
+    #def critical_discharge(t,parked_prev, condition, discharging_rate, battery_capacity, df_SOC,df_Power):
+        #df_SOC.loc[t, ~condition & parked_prev] = df_SOC.shift().loc[t, ~condition & parked_prev] - (
+                #discharging_rate * delta_t) / battery_capacity
+        #df_Power.loc[t, ~condition & parked_prev] = (discharging_rate * scaling_factor) / 1000
         #df_CarCounts.loc[t, 'noscale'] = ~condition.sum()
-    def critical_charge(t,parked_prev, condition, charging_rate, battery_capacity, df_SOC,df_Power):
-        df_SOC.loc[t, ~condition & parked_prev] = df_SOC.shift().loc[t, ~condition & parked_prev] + (
-                charging_rate * delta_t) / battery_capacity
-        df_Power.loc[t, ~condition & parked_prev] = -(charging_rate * scaling_factor) / 1000
+    #def critical_charge(t,parked_prev, condition, charging_rate, battery_capacity, df_SOC,df_Power):
+        #df_SOC.loc[t, ~condition & parked_prev] = df_SOC.shift().loc[t, ~condition & parked_prev] + (
+                #charging_rate * delta_t) / battery_capacity
+        #df_Power.loc[t, ~condition & parked_prev] = -(charging_rate * scaling_factor) / 1000
 
     def critical_SOC_power_calculator(t,parked_prev, critical, rate, battery_capacity, df_SOC,df_Power):
-        df_SOC.loc[t, critical & parked_prev] = df_SOC.shift().loc[t, critical& parked_prev] + (rate*delta_t)/battery_capacity
-        df_Power.loc[t, critical& parked_prev] = -(rate * scaling_factor)/1000
-        print(critical.sum())
-        df_CarCounts.loc[t, 'Critical'] = critical.sum()*scaling_factor
+        df_SOC.loc[t, critical & parked_prev] = df_SOC.shift().loc[t, critical & parked_prev] + (rate*delta_t)/battery_capacity
+        df_Power.loc[t, critical & parked_prev] = -(rate * scaling_factor)/1000
+        #df_SOC.loc[t, critical & parked_prev] = df_SOC.shift().loc[t, critical & parked_prev]
+        #df_Power.loc[t, critical & parked_prev] = 0
+        df_CarCounts.loc[t, 'Critical'] = critical.sum()* scaling_factor
 
     def charge(t, condition2,parked_prev, critical, Pdifference_left, rate, battery_capacity, df_SOC,df_Power):
         parked_not_critical = parked_prev & ~critical
 
         # update cars that cannot be charged because soc is too high--> called the blocked cars
-        df_SOC.loc[t, parked_prev & ~condition2 & ~critical] = df_SOC.shift().loc[t,parked_prev & ~condition2 & ~critical]
-        df_Power.loc[t, parked_prev & ~condition2 & ~critical] =0
+        df_SOC.loc[t, ~condition2 & ~critical& parked_prev] = df_SOC.shift().loc[t, ~condition2 & ~critical& parked_prev]
+        df_Power.loc[t, ~condition2 & ~critical& parked_prev] =0
         ## sort SOC of remaining cars in ascending order
-        SOC_sorted = df_SOC.shift().loc[t, parked_not_critical& condition2].sort_values(ascending=True)
+        SOC_sorted = df_SOC.shift().loc[t, condition2 & ~critical& parked_prev].sort_values(ascending=True)
         new_Power = pd.Series((-rate * scaling_factor) / 1000, index=SOC_sorted.index)
         cumulative_Power = new_Power.cumsum()
         # Determine the number of cars for which we need to calculate the Power
         Nb = cumulative_Power[-cumulative_Power < abs(Pdifference_left)].count()
-        df_CarCounts.loc[t, 'Charging_noscale'] = Nb
-        #print('Nbcharge',Nb)
-        #print('lenSOC',len(SOC_sorted))
+        df_CarCounts.loc[t, 'Charging'] = Nb*scaling_factor
+        #print('Nbcharge(t+1)',Nb)
+        #print('lenSOC(t+1)',len(SOC_sorted))
         # Update SOC and Power for the cars that will be charging
         df_SOC.loc[t, new_Power.index[:Nb]] = df_SOC.shift().loc[t, new_Power.index[:Nb]] + (rate*delta_t) / battery_capacity
         df_Power.loc[t, new_Power.index[:Nb]] = new_Power.loc[new_Power.index[:Nb]]
@@ -287,7 +323,16 @@ for scenario in scenarios:
         df_Power.loc[t, new_Power.index[Nb:]] = 0
         ##this is only to check if there are not enough of the normal cars available than we should charge the rest
         if Nb >= len(SOC_sorted):
-            print('fail Nb charge bigger than available')
+            #print('fail Nb charge bigger than available')
+            needed = math.ceil(abs(Pdifference_left) * 1000 / (rate * scaling_factor))
+            logging.info(needed*scaling_factor)
+            missing = needed - len(SOC_sorted)
+            #print('missing_cars(t)', missing)
+            df_CarCounts.loc[t, 'Missing_noscale'] = missing
+            df_CarCounts.loc[t, 'Power_missing'] = -missing * (rate * scaling_factor) / 1000
+        else:
+            df_CarCounts.loc[t, 'Missing_noscale'] = 0
+            #print('fail Nb charge bigger than available')
             #crit_charge_rate = 6
             #df_SOC.loc[t, parked_prev & ~condition2 & ~critical] = np.minimum(1, df_SOC.shift().loc[
                 #t, parked_prev & ~condition2 & ~critical] + (crit_charge_rate * delta_t) / battery_capacity)
@@ -300,11 +345,11 @@ for scenario in scenarios:
         # Sort the SOC by highest to lowest
         parked_not_critical = parked_prev & ~critical
         # update SOC of all the cars with too low SOC for discharge--> blocked cars
-        df_SOC.loc[t, parked_prev & ~condition & ~critical] = df_SOC.shift().loc[t,parked_prev & ~condition & ~critical]
-        df_Power.loc[t, parked_prev & ~condition & ~critical] =0
+        df_SOC.loc[t, ~condition & ~critical&parked_prev] = df_SOC.shift().loc[t,~condition& ~critical&parked_prev]
+        df_Power.loc[t, ~condition& ~critical&parked_prev ] =0
 
         #available_discharge = (df_SOC.shift().loc[t,parked_prev] != 0 & ~critical)
-        SOC_sorted = df_SOC.shift().loc[t, parked_prev & ~critical & condition].sort_values(ascending=False)
+        SOC_sorted = df_SOC.shift().loc[t, condition & ~critical & parked_prev].sort_values(ascending=False)
         # Calculate new Power for all parked, not critical cars
         # power given in KW we want it in MW need to dived by 1000 to get MW
         new_Power = pd.Series((rate * scaling_factor) / 1000, index=SOC_sorted.index)
@@ -313,13 +358,27 @@ for scenario in scenarios:
         # Determine the number of cars for which we need to calculate the Power
         Nb = cumulative_Power[cumulative_Power <= abs(Pdifference_left)].count() + 1
         if Nb >= len(SOC_sorted):
-            print('fail Nb discharge bigger than available')
-        #print('Nbsicharge',Nb)
-        #print('lenSoCdischarge',len(SOC_sorted))
+            #print('fail Nb discharge bigger than available')
+            needed=math.ceil(abs(Pdifference_left)*1000/(rate*scaling_factor))
+            logging.info(needed*scaling_factor)
+            missing=needed-len(SOC_sorted)
+            df_CarCounts.loc[t, 'Power_missing'] = missing*(rate*scaling_factor)/1000
+            #print('missing_cars(t)',missing)
+            df_CarCounts.loc[t, 'Missing_noscale'] = missing
+        else:
+            missing=0
+            df_CarCounts.loc[t, 'Missing_noscale'] = missing
+            df_CarCounts.loc[t, 'Power_missing'] = 0
+            #print('missing_cars(t)',missing)
+        #print('Nbdischarge(t+1)',Nb)
+        #print('lenSoCdischarge(t+1)',len(SOC_sorted))
         #print('indexdischarge',new_Power.index[:Nb])
-        df_CarCounts.loc[t, 'Discharging_noscale'] = Nb
+        df_CarCounts.loc[t, 'Discharging'] = Nb* scaling_factor
         # Update SOC and Power for the cars that will be discharging
         df_SOC.loc[t, new_Power.index[:Nb]] = df_SOC.shift().loc[t, new_Power.index[:Nb]] - (rate*delta_t) / battery_capacity
+
+
+
         df_Power.loc[t, new_Power.index[:Nb]] = new_Power.loc[new_Power.index[:Nb]]
         # update SOC for all cars that are not discharging.
         df_SOC.loc[t, new_Power.index[Nb:]] = df_SOC.shift().loc[t, new_Power.index[Nb:]]
@@ -329,29 +388,29 @@ for scenario in scenarios:
 
     def charge_update_car_counts(t,condition2,parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size):
         df_CarCounts.loc[t, 'Charging'] = ((df_Power.loc[
-                                                t] < 0) & ~critical).sum() * scaling_factor  # Negative power means charging
+                                               t] < 0) & ~critical).sum() * scaling_factor  # Negative power means charging
         df_CarCounts.loc[t, 'Discharging'] = (df_Power.loc[
-                                                  t] > 0 ).sum() * scaling_factor  # Positive power means discharging## Sort the SOC by lowest to highest
+                                                 t] > 0 ).sum() * scaling_factor  # Positive power means discharging## Sort the SOC by lowest to highest
         df_CarCounts.loc[
-            t, 'Critical'] = critical.sum() * scaling_factor  # Already defined critical as a boolean Series, so sum gives count of True values#parked_not_critical = parked & ~critical
+           t, 'Critical'] = critical.sum() * scaling_factor  # Already defined critical as a boolean Series, so sum gives count of True values#parked_not_critical = parked & ~critical
         df_CarCounts.loc[t, 'Driving'] = driving.sum()
         df_CarCounts.loc[t, 'Parked_neutral'] = parked.sum() - (
-                    df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] + df_CarCounts.loc[
-                t, 'Critical']) / scaling_factor
+                   df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] + df_CarCounts.loc[
+               t, 'Critical']) / scaling_factor
         df_CarCounts.loc[t, 'Notavailbutparked'] = (parked & ~condition2 & ~critical).sum()
-        #df_CarCounts.loc[t, 'Notavailbutparked'] = 0
+        df_CarCounts.loc[t, 'Notavailbutparked'] = 0
+        df_CarCounts.loc[t, 'Total_needed'] = (df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] +
+                                              df_CarCounts.loc[t, 'Critical']) / (
+                                                         1 - df_CarCounts.loc[t, 'Driving'] / sample_size-df_CarCounts.loc[t, 'Notavailbutparked'] / sample_size)
         df_CarCounts.loc[t, 'Total_needed'] = (df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] +
                                                df_CarCounts.loc[t, 'Critical']) / (
-                                                          1 - df_CarCounts.loc[t, 'Driving'] / sample_size-df_CarCounts.loc[t, 'Notavailbutparked'] / sample_size)
-        #df_CarCounts.loc[t, 'Total_needed'] = (df_CarCounts.loc[t, 'Charging'] + df_CarCounts.loc[t, 'Discharging'] +
-        #                                       df_CarCounts.loc[t, 'Critical']) / (
-        #                                                  1 - df_CarCounts.loc[t, 'Driving'] / sample_size)
-        #
+                                                          1 - df_CarCounts.loc[t, 'Driving'] / sample_size)
+
         df_CarCounts.loc[t, 'margin']=df_CarCounts.loc[t, 'Parked_neutral'] - df_CarCounts.loc[t, 'Notavailbutparked']
 
         df_CarCounts.loc[t, 'noscale']=(df_CarCounts.loc[t, 'Charging']+df_CarCounts.loc[t, 'Discharging']+df_CarCounts.loc[
-            t, 'Critical'])/scaling_factor
-        #
+           t, 'Critical'])/scaling_factor
+
 
     def discharge_update_car_counts(t,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size):
         df_CarCounts.loc[t, 'Charging'] = ((df_Power.loc[
@@ -381,109 +440,88 @@ for scenario in scenarios:
     def smart_charging(df_cars_shifted,df_cars,df_SOC,df_SOC_min_month,df_Power,df_15,df_CarCounts,month,scaling_factor,TotalAllmonths_smart_charging,charging_rate,discharging_rate):
         # Iterate over each time step
         for t in df_cars.index[1:]:
-            #print(t)
+            logging.info(t)
             parked_prev = df_cars_shifted.loc[t] == 1
             driving_prev = ~parked_prev
             parked= df_cars.loc[t] == 1
             driving = ~parked
-            df_CarCounts.loc[t, 'Driving'] = driving.sum()
-            #print('driving',driving.sum())
+            df_CarCounts.loc[t, 'Driving'] = driving_prev.sum()
+            #print('driving(t)',driving_prev.sum())
+            #print('parked(t)',parked_prev.sum())
             #a=df_SOC_min_month.loc[t]
 
             df_SOC.loc[t, driving_prev] = df_SOC.shift().loc[t, driving_prev] - energy_loss_driving/battery_capacity
             df_Power.loc[t, driving_prev] = 0
-            critical = ((df_SOC.shift().loc[t]-(discharging_rate*delta_t)/battery_capacity)<= df_SOC_min_month.loc[t]) & (df_cars.loc[t]==0)
+            critical = ((df_SOC.shift().loc[t,parked_prev]-(discharging_rate*delta_t)/battery_capacity)<= df_SOC_min_month.loc[t,parked_prev]) & (df_cars.loc[t,parked_prev]==0)
+            #print('critical(t)',critical.sum())
             #driving_prev=df_cars_shifted.loc[t] ==0
             # Update SOC and Power for driving cars
             critical_SOC_power_calculator(t, parked_prev, critical, charging_rate, battery_capacity, df_SOC, df_Power)
-            Pagg_critical = df_Power.loc[t, critical & parked_prev].sum()
-            Pdifference_left = df_15.loc[t, 'Pdifference'] + Pagg_critical
+            Pagg_critical = df_Power.loc[t, critical& parked_prev].sum()
+            Pdifference_left = (df_15.shift().loc[t, 'Pdifference']) + Pagg_critical
+            #df_CarCounts.loc[t, 'Pdifference'] = df_15.shift().loc[t, 'Pdifference']
+            df_CarCounts.loc[t, 'Pdifference_left']=Pdifference_left
             #Pdifference_left = df_15.loc[t, 'Pdifference'] + Pagg_critical
 
              # preventive charging and dicharging so that the SOC does not converge too fast
             # if we do this since the soc converges fast, the all charge at the same time.
-            condition2 = df_SOC.shift().loc[t] <= 1 - (charging_rate * delta_t) / battery_capacity
-            condition = df_SOC.shift().loc[t] > (discharging_rate * delta_t) / battery_capacity
+            #condition2 = df_SOC.shift().loc[t] <= 1 - (charging_rate * delta_t) / battery_capacity
+            #condition = df_SOC.shift().loc[t] > (discharging_rate * delta_t) / battery_capacity
 
             #critical_discharge(t, parked_prev, condition2, discharging_rate, battery_capacity, df_SOC, df_Power)
             #Pagg_critical_discharge = df_Power.loc[t, ~condition2 & parked_prev].sum() # this is positive since dicharge
             #critical_charge(t, parked_prev, condition, charging_rate, battery_capacity, df_SOC, df_Power)
             #Pagg_critical_charge = df_Power.loc[t, ~condition & parked_prev].sum()
-            Pdifference_left = df_15.loc[t, 'Pdifference'] + Pagg_critical #+Pagg_critical_charge  #Pagg_critical_discharge
+            #Pdifference_left = df_15.loc[t, 'Pdifference'] + Pagg_critical #+Pagg_critical_charge  #Pagg_critical_discharge
 
             # If there's remaining power left after charging critical cars, proceed with parked cars
             if Pdifference_left > 0:
-                condition2 = df_SOC.shift().loc[t] <= 1 - (charging_rate * delta_t) / battery_capacity
-                #print('condition2',condition2.sum())
+                #print('Pdifference_left',Pdifference_left)
+                #condition2 = df_SOC.shift().loc[t,parked_prev ] <= 1 - (charging_rate * delta_t) / battery_capacity
+                #print('condition2_blocked(t-1)', (~condition2).sum())
+                condition2 = df_SOC.shift().loc[t,parked_prev & ~critical] <= 1 - (charging_rate * delta_t) / battery_capacity
+                df_CarCounts.loc[t, 'Blocked_high'] = (~condition2).sum()
+                df_CarCounts.loc[t, 'P_Blocked_high'] = (~condition2).sum()/sample_size
+                #print('condition2_blocked_try(t)',(~condition2).sum())
                 #df_CarCounts.loc[t, 'SOC_high'] = (parked & ~condition2 ).sum
                 #df_CarCounts.loc[t, 'SOC_low']=0
                 charge(t, condition2,parked_prev, critical, Pdifference_left, charging_rate, battery_capacity, df_SOC,
                        df_Power)
-                charge_update_car_counts(t, condition2, parked, critical, driving, df_Power, df_CarCounts, df_cars,
-                                         sample_size)
+                #charge_update_car_counts(t, condition2, parked, critical, driving, df_Power, df_CarCounts, df_cars,
+                                         #sample_size)
             if Pdifference_left < 0:
-                condition = df_SOC.shift().loc[t] > (discharging_rate * delta_t) / battery_capacity
+                #scaling_factor=1500
+                #print('Pdifference_left', Pdifference_left)
+                #conditiontry = df_SOC.shift().loc[t,parked_prev ] > (discharging_rate * delta_t) / battery_capacity
+                #print('condition_blockedtry(t)',(~conditiontry).sum())
+
+                condition = df_SOC.shift().loc[t,parked_prev & ~critical] > (discharging_rate * delta_t) / battery_capacity
+                df_CarCounts.loc[t, 'Blocked_low'] = (~condition).sum()
+                df_CarCounts.loc[t, 'P_Blocked_low'] = (~condition).sum() / sample_size
                 #df_CarCounts.loc[t, 'SOC_low'] = (parked_prev & ~condition & ~critical).sum
                 #df_CarCounts.loc[t, 'SOC_high']=0
-                #print('condition',condition.sum())
+                #print('condition_blocked(t)',(~condition).sum())
                 discharge(t, condition, parked_prev, critical, Pdifference_left, discharging_rate, battery_capacity,
                           df_SOC, df_Power)
-                discharge_update_car_counts(t,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars,
-                                            sample_size)
-
-        ## Check for Pdifference>0 or Pdifference <0
-           #if df_15.loc[t, 'Pdifference'] > 0:  # Charging
-           #    # Calculate SOC and Power for critical cars
-           #    critical_SOC_power_calculator(t,parked_prev, critical, charging_rate, battery_capacity, df_SOC, df_Power)
-           #    Pagg_critical = df_Power.loc[t, critical].sum()
-           #    Pdifference_left = df_15.loc[t, 'Pdifference'] + Pagg_critical
-           #    # If there's remaining power left after charging critical cars, proceed with parked cars
-           #    if Pdifference_left > 0:
-           #        condition2 = df_SOC.shift().loc[t,parked_prev] <= 1- (charging_rate*delta_t) / battery_capacity
-           #        charge(t,condition2,parked_prev, critical, Pdifference_left, charging_rate, battery_capacity, df_SOC,df_Power)
-           #        charge_update_car_counts(t,condition2, parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size)
-           #    if Pdifference_left < 0:
-           #        condition = df_SOC.shift().loc[t, parked_prev] > (discharging_rate*delta_t) / battery_capacity
-           #        discharge(t,condition, parked_prev, critical, Pdifference_left, discharging_rate, battery_capacity, df_SOC, df_Power)
-           #        discharge_update_car_counts(t,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size)
-           #
-           #elif df_15.loc[t, 'Pdifference'] < 0:  # Discharging
-           #    # Calculate SOC and Power for critical cars
-           #    critical_SOC_power_calculator(t, critical, charging_rate, battery_capacity, df_SOC, df_Power)
-           #    Pagg_critical = df_Power.loc[t, critical].sum()
-           #    Pdifference_left = df15.loc[t, 'Pdifference'] + Pagg_critical
-           #    condition = df_SOC.shift().loc[t, parked_prev] > (discharging_rate*delta_t) / battery_capacity
-           #
-           #    discharge(t,condition, parked_prev, critical, Pdifference_left, discharging_rate, battery_capacity, df_SOC, df_Power)
-           #
-           #    discharge_update_car_counts(t,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars, sample_size)
-           #
+                #discharge_update_car_counts(t,condition, parked, critical, driving, df_Power, df_CarCounts, df_cars,
+                                            #sample_size)
+        #df_CarCounts=df_CarCounts.shift(1)
+        df_15_shift=df_15.shift(1)
         df_Power_sum_ = df_Power.sum(axis=1).to_frame().rename(columns={0: 'PV2G'})
-        df_Power_sum_1  = df_15.join(df_Power_sum_)
+        df_Power_sum_1  = df_15_shift.join(df_Power_sum_)
         df_Power_sum_month = df_Power_sum_1.join(df_CarCounts)
-        df_Power_sum_month['P_balance'] = df_Power_sum_month['PV2G'] + df_15['Pdifference']
+        df_Power_sum_month['P_balance_without'] = df_Power_sum_month['PV2G'] + df_15['Pdifference']
+        df_Power_sum_month['P_balance_with_missing'] = df_Power_sum_month['PV2G'] + df_15['Pdifference']+df_Power_sum_month['Power_missing']
+
         #the first row needs to be removed because the cars are not actively participating in V2G.
-        df_Power_sum_month = df_Power_sum_month.iloc[1:]
-        df_SOC.to_csv(f'/Users/louisahillegaart/pythonProject1/RESULTS/{scenario["name"]}/BIG5_SOC_month{month}_W{capacity}_alpha_{scaling_factor}_SOC_discharging_{discharging_rate}.csv')
-        df_Power_sum_month.to_csv(f'/Users/louisahillegaart/pythonProject1/RESULTS/{scenario["name"]}/BIG_5Power_month{month}_W{capacity}alpha_{scaling_factor}_discharging_{discharging_rate}.csv')
+        #df_Power_sum_month = df_Power_sum_month.iloc[1:]
+        df_SOC.to_csv(f'{scenario["name"]}/NEW_{scaling}_SOC_month{month}_W{capacity}_alpha_{scaling_factor}_SOC_discharging_{discharging_rate}.csv')
+        df_Power_sum_month.to_csv(f'{scenario["name"]}/NEW_{scaling}Power_month{month}_W{capacity}alpha_{scaling_factor}_discharging_{discharging_rate}.csv')
+        results(df_CarCounts,df_results)
         # Store the dataframe in the dictionary with the month as the key
         dfs[f"df_Power_sum_{month}"] = df_Power_sum_month
+        TotalAllmonths_smart_charging=False
         if TotalAllmonths_smart_charging:
-            result = dfs[f'df_Power_sum_{month}']['Total_needed'].max()
-            margin = dfs[f'df_Power_sum_{month}']['margin'].min()
-            max_total_index = dfs[f'df_Power_sum_{month}']['Total_needed'].idxmax()
-            PV2G = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'PV2G']
-            Pdiff = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'Pdifference']
-            rmse = np.sqrt((dfs[f'df_Power_sum_{month}']['P_balance'] ** 2).mean())
-            Nb = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'noscale']
-            p1 = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'Driving'] / sample_size
-            p2 = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'Notavailbutparked'] / sample_size
-            Nb4 = Nb / (1 - p1 - p2)
-            Nb2 = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'Driving'] / sample_size * Nb4
-            Nb3 = dfs[f'df_Power_sum_{month}'].loc[max_total_index, 'Notavailbutparked'] / sample_size * Nb4
-            return result, margin, Nb, Nb2, Nb3, Nb4, p1, p2, PV2G, rmse, Pdiff
-
-    def ALLmonth_smart_chargign(dfs,month):
             result = dfs[f'df_Power_sum_{month}']['Total_needed'].max()
             margin = dfs[f'df_Power_sum_{month}']['margin'].min()
             max_total_index = dfs[f'df_Power_sum_{month}']['Total_needed'].idxmax()
@@ -515,18 +553,18 @@ for scenario in scenarios:
     #    12:250
     #}
     min_scaling_factors = {
-        1:2000,
-        2:3000,
-        3:4000,
-        4:5000,
-        5:5000,
-        6:5000,
-        7:6000,
-        8:7000,
-        9:6000,
-        10:4000,
-        11:3000,
-        12:2000
+        1:100,
+        2:200,
+        3:200,
+        4:300,
+        5:400,
+        6:200,
+        7:300,
+        8:300,
+        9:200,
+        10:200,
+        11:200,
+        12:200
     }
     if smart_charging_:
         dfs = {}
@@ -560,7 +598,8 @@ for scenario in scenarios:
         Total_month = pd.DataFrame(columns=['month', 'scaling_factor', 'Total_needed_max', 'Energy_coverage'])
 
         for month in range(1,13):
-            print(month)
+
+            logging.info(month)
             df_cars_month=load_and_extract_month(df_cars,month)
             df_15=load_and_extract_month(df15,month)
             df_SOC_min_month = load_and_extract_month(df_SOC_min, month)
@@ -571,34 +610,38 @@ for scenario in scenarios:
                 columns=df_cars_month.columns
             )
             df_Power = pd.DataFrame(0, index=df_cars_month.index, columns=df_cars_month.columns)
-            df_CarCounts = pd.DataFrame(0, index=df_cars_month.index, columns=['Charging', 'Discharging', 'Critical', 'Driving'])
+            df_CarCounts = pd.DataFrame(0, index=df_cars_month.index, columns=['Pdifference_left','Power_missing','Charging', 'Discharging', 'Critical', 'Driving','Missing_noscale','Blocked_high','Blocked_low','P_Blocked_high','P_Blocked_low','P_driving'])
+            df_results = pd.DataFrame(0, index=df_cars_month.index,
+                                      columns=['Total', 'Nmissing_total', 'Ncharging_total', 'Ndischarging_total',
+                                               'Ncritical', 'Ndriving', 'Nblocked'])
             #df_Power_sum = pd.DataFrame(0,index=df_cars.index,columns=['Power_output','NYC_demand','Pdifference','Charging', 'Discharging', 'Critical', 'Driving','Total_needed','P_balance'])
             #df_SOC_shifted = df_SOC.shift()
             df_SOC_min_shifted = df_SOC_min_month.shift()
             df_cars_shifted=df_cars_month.shift()
             scaling_factor = min_scaling_factors[month]
             print(scaling_factor)
+            logging.info(scaling_factor)
             result,margin, Nb, Nb2, Nb3,Nb4, p1, p2,PV2G,rmse,Pdiff=smart_charging(df_cars_shifted,df_cars_month,df_SOC,df_SOC_min_month,df_Power,df_15,df_CarCounts,month,scaling_factor,TotalAllmonths_smart_charging,charging_rate,discharging_rate)
             # Create a dictionary with column names as keys and values
-            row_data = {
-                'month': month,
-                'scaling_factor': scaling_factor,
-                'Total_needed_max': result,
-                'Energy_coverage': margin,
-                'PV2G': PV2G,
-                'Pdiff': Pdiff,
-                'Pbalance_rmse': rmse,
-                'Nb_indivual_cars': Nb,
-                'Nb_driving': Nb2,
-                'Nb_parked': Nb3,
-                'prob_driving': p1,
-                'prob_parking': p2,
-                'DatasetNbcars': Nb4
-            }
-            # Append the dictionary as a new row to the dataframe
-            Total_month = Total_month.append(row_data, ignore_index=True)
+            #row_data = {
+            #    'month': month,
+            #    'scaling_factor': scaling_factor,
+            #    'Total_needed_max': result,
+            #    'Energy_coverage': margin,
+            #    'PV2G': PV2G,
+            #    'Pdiff': Pdiff,
+            #    'Pbalance_rmse': rmse,
+            #    'Nb_indivual_cars': Nb,
+            #    'Nb_driving': Nb2,
+            #    'Nb_parked': Nb3,
+            #    'prob_driving': p1,
+            #    'prob_parking': p2,
+            #    'DatasetNbcars': Nb4
+            #}
+            ## Append the dictionary as a new row to the dataframe
+            #Total_month = Total_month.append(row_data, ignore_index=True)
 
-        Total_month.to_csv(f'/Users/louisahillegaart/pythonProject1/RESULTS/{scenario["name"]}/total_all_month_{capacity}M.csv', index=False)
+        #Total_month.to_csv(f'/Users/louisahillegaart/pythonProject1/RESULTS/{scenario["name"]}/total_all_month_{capacity}M.csv', index=False)
 
 
     if plotdiff:

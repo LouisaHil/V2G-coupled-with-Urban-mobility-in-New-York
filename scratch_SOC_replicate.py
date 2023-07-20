@@ -4,15 +4,28 @@ import math
 import random
 import hashlib
 import datetime
+import logging
+logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S")
 
-
+PV=False
 month=11
 capacity=9
-scaledown=800
+scaledown=1
+logging.info(month)
+logging.info(capacity)
+logging.info(scaledown)
 df_cars = pd.read_csv('expanded_dataset.csv', index_col='time_interval')
 df_SOC_min = pd.read_csv('SOCmin_data2.csv' , index_col='time_interval',parse_dates=True)
-#df15 = pd.read_csv(f'Wind_NY_Power{capacity}', index_col=0, parse_dates=True)
-df15 = pd.read_csv('Wind_NY_Power9.csv', index_col=0, parse_dates=True)
+#df15 = pd.read_csv(f'Wind_NY_Power{capacity}.csv', index_col=0, parse_dates=True)
+#df15 = pd.read_csv('WindandPV_NY_Power9.csv', index_col=0, parse_dates=True)
+
+if PV:
+    pv='pv'
+    df15 = pd.read_csv(f'WindandPV_NY_Power{capacity}.csv', index_col=0, parse_dates=True)
+else:
+    pv='nopv'
+    df15 = pd.read_csv(f'Wind_NY_Power{capacity}.csv', index_col=0, parse_dates=True)
+
 df15.index = pd.to_datetime(df15.index)
 df_cars.index = pd.to_datetime(df_cars.index)
 df_cars = df_cars.sort_values(by='time_interval')
@@ -166,8 +179,9 @@ def charge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
     # Sort the SOC by lowest to highest from the available ones excluding the critical cars
     SOC_sorted = df_SOC_.loc[t - pd.DateOffset(minutes=15), condition2 & ~critical & parked_prev].sort_values(
         ascending=True)
-    print('cars available for charge',len(SOC_sorted))
-    print('blocked charging',(~condition2 & ~critical & parked_prev).sum())
+
+
+    logging.info((~condition2 & ~critical & parked_prev).sum())
 
     # 3. The replication of alpha cars means that we will also have alpha times a car with similar mobility patterns ans SOC in available state.
     # 4. Decide if remaining cars need to be charged
@@ -189,7 +203,7 @@ def charge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
                 alpha = math.ceil(needed / len(SOC_sorted))-1
                 Nb = math.ceil(needed / alpha) - 1
             else:
-                print('error need to create whole new dataset of alpha cars')
+                logging.info('error need to create whole new dataset of alpha cars')
                 alpha=needed      ## we need to create all new cars 
                 Nb=1 # take a random index from original cars and crste a random SOC
         else:
@@ -240,13 +254,13 @@ def discharge(df_SOC_,Pdifference_left,rate,delta_t,battery_capacity):
 
 def discharge_after_charge(df_SOC_,Pdifference_left_new,rate,alpha,delta_t, battery_capacity):
     # available_discharge = (df_SOC.shift().loc[t,parked_prev] != 0 & ~critical)
-    print('discharge after critical')
+    logging.info('discharge after critical')
     SOC_sorted = df_SOC_.loc[t - pd.DateOffset(minutes=15), condition & ~critical & parked_prev].sort_values(
         ascending=False)
-    print('available discharging',len(SOC_sorted))
+    logging.info(len(SOC_sorted))
     needed= math.ceil(abs(Pdifference_left_new) * 1000 / (rate))
     if needed > len(SOC_sorted):
-        print('fail algorithm')
+        logging.info('fail algorithm')
     if alpha>1:
         Nb=math.ceil(needed/alpha)-1
     else:
@@ -291,8 +305,19 @@ master_inv_column_mapping = {}
 column_mapping = None
 start_time = df_cars_month.index[1]  # Set start_time as the second index value
 end_time = df_cars_month.index[-2]
+
+# Initialize an empty DataFrame
+result_df = pd.DataFrame(columns=['index t', 'Size', 'parked', 'alpha', 'Blocked discharging',
+                                  'Blocked charging', 'critical', 'driving', 'Nb', 'free cars',
+                                  'TotalParticipation needed', 'P_difference', 'P_difference_left', 'PV2G'])
+# Determine the filename for the CSV file based on the current time step
+csv_filename = f'Timestep_scaledown_{scaledown}Month{month}_rate_c{charging_rate}_rate_d{discharging_rate}_WIND{capacity}000MW.csv'
+                # Change this to the desired filename
+
+result_df.index.name = 'index t'
 for t in df_cars_month.index[1:]:
-    print(t)
+    logging.info(t)
+
     if t >= start_time and t < end_time:
         # Check if the timestamp exists in SOC_dict
         # If SOC_dict is not empty and t-1 exists in SOC_dict, convert the last entry to a dataframe
@@ -309,12 +334,13 @@ for t in df_cars_month.index[1:]:
             new_row = pd.Series(index=df_SOC_.columns, dtype='float64')
             df_cars_month_joined=df_cars_month
             df_SOC_min_month_joined=df_SOC_min_month
-        print("Number of cars in set:", df_SOC_.shape[1])
+
+        logging.info(df_SOC_.shape[1])
         ### create mask for which the different states of a car can be taken
         parked_prev = df_cars_month_joined.shift().loc[t] == 1
         driving_prev = ~parked_prev
-        print('number of driving cars',driving_prev.sum())
-        print('number of parked cars',parked_prev.sum())
+        #logging.info(driving_prev.sum())
+        #logging.info(parked_prev.sum())
         #critical cars
         critical = ((df_SOC_.loc[t -pd.DateOffset(minutes=15), parked_prev] - (discharging_rate * delta_t) / battery_capacity) <=df_SOC_min_month_joined.loc[t,parked_prev]) & (df_cars_month_joined.loc[t, parked_prev] == 0)
         critical_parked_indices = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical& parked_prev].index
@@ -326,10 +352,13 @@ for t in df_cars_month.index[1:]:
         new_row[critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), critical & parked_prev] + (charging_rate * delta_t) / battery_capacity
         # check for periods of high wind or low wind.
         Pdifference = df_15.shift().loc[t, 'Pdifference']
-        print('P ', Pdifference)
+
+        logging.info(Pdifference)
+
         Pagg_critical = (critical & parked_prev).sum() * (-charging_rate) / 1000
         Pdifference_left= Pdifference+Pagg_critical
-        print('P and critical', Pdifference_left)
+
+        logging.info(Pdifference_left)
         if Pdifference_left > 0:
             # compute SOC of blocked cars (cannot be charged) SOC(t+1)=SOC(t)
             new_row[~condition2 & ~critical & parked_prev] = df_SOC_.loc[t - pd.DateOffset(minutes=15), ~condition2 & ~critical & parked_prev]
@@ -415,18 +444,35 @@ for t in df_cars_month.index[1:]:
             'PV2G': PV2G,  # Now PV2G should be defined inside your loop
         
         }
+        # Load the previous CSV file (if it exists)
+        try:
+            prev_df = pd.read_csv(csv_filename)
+        except FileNotFoundError:
+            prev_df = pd.DataFrame()
+
+        # Append the new row (data_dict) to the previous DataFrame
+        new_df = prev_df.append(data_dict, ignore_index=True)
+
+        # Set the index of the new DataFrame to the updated time step
+        new_df.set_index('index t', inplace=True)
+
+        # Save the new DataFrame as a CSV file
+        new_df.to_csv(csv_filename)
+
+        # Append the new row (data_dict) to the result DataFrame
+        result_df = result_df.append(data_dict,ignore_index=True)
         # Append the data dictionary to the list
-        data_dicts.append(data_dict)
+        #data_dicts.append(data_dict,ignore_index=True)
 
     if t > end_time:
         break
         #print(data_dicts)
 
 # Convert the list of dictionaries to a pandas DataFrame
-df_to_export = pd.DataFrame(data_dicts)
+#df_to_export = pd.DataFrame(data_dicts)
 
 # Export the DataFrame to a CSV file
-df_to_export.to_csv(f'scaledown_{scaledown}Month{month}_rate_c{charging_rate}_rate_d{discharging_rate}_WIND{capacity}000MW.csv', index=False)
+#df_to_export.to_csv(f'scaledown_{scaledown}Month{month}_rate_c{charging_rate}_rate_d{discharging_rate}_WIND{capacity}000MW.csv', index=False)
 
 
 
