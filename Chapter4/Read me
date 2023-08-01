@@ -1,0 +1,2 @@
+scratch_SOC_replicate.py : is the code described in chapter 4 of the thesis of the reassessed smart charging algorithm. It can be run with different parameters. 
+Plots_SCA2.py : Is the code that plots the results from scratch_SOC_replicate.py, more specifically the total requisite number of EVs over time 
