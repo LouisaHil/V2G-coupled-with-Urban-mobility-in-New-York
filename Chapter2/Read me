@@ -4,3 +4,6 @@ plots_wind_NY is the plots for wind vs NYC demand
 Travelsurvey.py is the code that does the preprocessing and identifies trajectories and availibility matrix for private vehicles
 SOCforPrivateCars.py is the first SCA algorithm for private cars 
 VectorizedChargingPatterns.py is the first SCA algorithm for taxis 
+
+
+The lines are commented and should be sufficient for reproduction and understanding. Since different scenarios can be run with these codes, the data uploaded and the parameters can be changed. 
