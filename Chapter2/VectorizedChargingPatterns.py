@@ -35,16 +35,19 @@ end = datetime(2013, 7, 30, 23, 30)
 
 ## wind data
 df = pd.read_csv('USWINDDATA_process9M.csv',parse_dates=['Local_time_New_York'], index_col='Local_time_New_York', delimiter=';')
+
+## this is NYC demand over 24 hours replicated for the entire month
 NYC_demand = np.array([4642,4478,4383,4343,4387,4633,5106,5548,5806,5932,5971,5965,5983,5979,5956,5974,6031,6083,5971,5818,5646,5418,5122,4801])
 
-# Read the data from taxis
-#df_taxi = pd.read_csv('new_NbofEvs_6.csv', index_col=0, parse_dates=True)
-df_taxi=pd.read_csv('Private_NbofEvs_1.csv', index_col=0,parse_dates=True)
+# Read the data from taxis ( e.g. month of june taxi) 
+df_taxi = pd.read_csv('new_NbofEvs_6.csv', index_col=0, parse_dates=True)
+# this is the dataset for private vehicles expanded over an entire year --> change if wanting to run over private vehicles 
 #df_taxi= pd.read_csv('expanded_dataset.csv', index_col='time_interval')
 df_taxi.index = pd.to_datetime(df_taxi.index)
-df_cars = df_taxi.sort_values(by='time_interval')
-df_taxi=df_taxi[df_taxi.index.month == month]
-df_taxi = df_taxi.iloc[:-100]
+
+### if running for expanded dataset this needs to be uncommented as well 
+#df_taxi=df_taxi[df_taxi.index.month == month] 
+#f_taxi = df_taxi.iloc[:-100]
 ## definitions
 def interval_dataframe(df,start_time,end_time):
     day = df.loc[start_time:end_time]
