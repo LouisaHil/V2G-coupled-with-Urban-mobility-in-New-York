@@ -37,7 +37,7 @@ end = datetime(2013, 1, 30, 23, 30)
 df = pd.read_csv('USWINDDATA_process.csv',parse_dates=['Local_time_New_York'], index_col='Local_time_New_York', delimiter=';')
 NYC_demand = np.array([4642,4478,4383,4343,4387,4633,5106,5548,5806,5932,5971,5965,5983,5979,5956,5974,6031,6083,5971,5818,5646,5418,5122,4801])
 
-# Read the data from taxis
+# Read the data from cars: This is the dataset for january--> change is required here for different month or if we would like to run the algorithm for the entire year and filer for each month after
 df_taxi = pd.read_csv('Private_NbofEvs_1.csv', index_col=0, parse_dates=True)
 
 ## definitions
