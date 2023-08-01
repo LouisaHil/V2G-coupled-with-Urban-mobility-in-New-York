@@ -1,0 +1,3 @@
+Scaling_mobility_SOCmin.py: Scaling mobility is the code that computes the scaled dataset of trip trajectories and the precomputed SOCmin. 
+FASTER_SOC.py: is the code with the implemented smart charging algorithm for a chosen alpha and Ncars. It takes the scaled dataset and SOCmin from Scaling_mobility.py 
+Here it is important that several scenarios can be run, so a lot of the code has to be uncommented/commeted dependent on need 
