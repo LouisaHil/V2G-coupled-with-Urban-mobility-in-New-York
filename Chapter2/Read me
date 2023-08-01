@@ -1,0 +1,6 @@
+The codes in this folder have all the relevant codes for chapter 2 of the thesis. 
+WINDUS is the preprocessing for wind power output curve and for NYC demand
+plots_wind_NY is the plots for wind vs NYC demand 
+Travelsurvey.py is the code that does the preprocessing and identifies trajectories and availibility matrix for private vehicles
+SOCforPrivateCars.py is the first SCA algorithm for private cars 
+VectorizedChargingPatterns.py is the first SCA algorithm for taxis 
